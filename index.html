@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b5fa5" />
+  <meta name="description" content="Aplicación móvil para toma de lecturas de medidores eléctricos." />
+  <title>Toma de Lecturas EEQ</title>
+
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- SheetJS: permite leer/escribir XLSX. La PWA intentará cachearlo después de la primera carga. -->
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="app.js"></script>
+</head>
+
+<body>
+  <header class="topbar">
+    <div>
+      <h1>⚡ Toma de Lecturas EEQ</h1>
+      <p class="subtitle">Ruta, lectura, novedades y respaldo</p>
+    </div>
+
+    <div class="topbar-right">
+      <div class="author-mark">Realizada por Jesus Remache</div>
+      <button id="installBtn" class="btn ghost hidden">Instalar app</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="section-title">
+        <h2>1. Cargar ruta</h2>
+        <span id="connectionStatus" class="badge">En línea</span>
+      </div>
+
+      <div class="grid grid-2">
+        <label>
+          Ruta
+          <input id="routeName" type="text" placeholder="Ej. 1417U454" autocomplete="off" />
+        </label>
+        <label>
+          Lector
+          <input id="readerName" type="text" placeholder="Nombre del lector" autocomplete="name" />
+        </label>
+      </div>
+
+      <div class="upload-row">
+        <label class="file-btn">
+          📂 Seleccionar Excel / CSV
+          <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" hidden />
+        </label>
+        <button id="continueBtn" class="btn secondary">Recargar ruta guardada</button>
+        <button id="clearRouteBtn" class="btn danger-outline">Borrar ruta local</button>
+      </div>
+
+      <p class="help">
+        Columnas recomendadas: MEDIDOR, CLIENTE.
+        El sistema intenta reconocer nombres parecidos automáticamente.
+      </p>
+    </section>
+
+    <section class="stats">
+      <article class="stat-card">
+        <span>Total</span>
+        <strong id="totalCount">0</strong>
+      </article>
+      <article class="stat-card">
+        <span>Leídos</span>
+        <strong id="readCount">0</strong>
+      </article>
+      <article class="stat-card">
+        <span>Pendientes</span>
+        <strong id="pendingCount">0</strong>
+      </article>
+      <article class="stat-card">
+        <span>Novedades</span>
+        <strong id="noveltyCount">0</strong>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <h2>2. Buscar cliente / medidor</h2>
+        <span id="routeBadge" class="badge muted">Sin ruta</span>
+      </div>
+
+      <div class="search-wrap">
+        <input
+          id="searchInput"
+          type="search"
+          placeholder="Medidor, cuenta, cliente, dirección o secuencia..."
+          autocomplete="off"
+        />
+        <button id="clearSearchBtn" class="btn ghost">Limpiar</button>
+      </div>
+
+      <div class="filters">
+        <button class="filter active" data-filter="all">Todos</button>
+        <button class="filter" data-filter="pending">Pendientes</button>
+        <button class="filter" data-filter="read">Leídos</button>
+        <button class="filter" data-filter="novelty">Novedades</button>
+      </div>
+
+      <div class="progress">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
+      <div id="progressLabel" class="progress-label">0% completado</div>
+
+      <div id="results" class="results">
+        <div class="empty">Cargue una ruta para comenzar.</div>
+      </div>
+    </section>
+
+    <section id="readingCard" class="card hidden">
+      <div class="section-title">
+        <h2>3. Medidor seleccionado</h2>
+        <span id="recordStatus" class="badge muted">Pendiente</span>
+      </div>
+
+      <div class="customer-grid simple-customer-grid">
+        <div>
+          <small>Medidor</small>
+          <strong id="vMeter">—</strong>
+        </div>
+        <div>
+          <small>Cliente</small>
+          <strong id="vCustomer">—</strong>
+        </div>
+      </div>
+
+      <div class="grid grid-2 form-space">
+        <label>
+          Lectura actual
+          <input id="currentReading" type="number" inputmode="decimal" step="0.01" placeholder="Digite lectura" />
+        </label>
+
+        <label>
+          Novedad
+          <select id="novelty">
+            <option value="">Sin novedad</option>
+            <option>No permite acceso</option>
+            <option>Predio cerrado</option>
+            <option>Medidor no localizado</option>
+            <option>Medidor ilegible</option>
+            <option>Medidor destruido</option>
+            <option>Medidor retirado</option>
+            <option>Conexión directa</option>
+            <option>Lectura menor</option>
+            <option>Lectura igual</option>
+            <option>Otra novedad</option>
+          </select>
+        </label>
+
+        <label class="span-2">
+          Observación
+          <textarea id="observation" rows="3" placeholder="Observación opcional"></textarea>
+        </label>
+      </div>
+
+      <div id="warningBox" class="warning hidden"></div>
+
+      <div class="action-grid">
+        <button id="prevBtn" class="btn secondary">⬅️ Anterior</button>
+        <button id="saveBtn" class="btn primary">💾 Guardar</button>
+        <button id="nextBtn" class="btn secondary">Siguiente ➡️</button>
+      </div>
+
+      <!-- Campos internos ocultos para conservar compatibilidad con la lógica de la aplicación -->
+      <div class="hidden">
+        <span id="vSequence"></span>
+        <span id="vAccount"></span>
+        <span id="vAddress"></span>
+        <span id="vPrevious"></span>
+        <span id="vConsumption"></span>
+        <span id="vTimestamp"></span>
+        <span id="vGps"></span>
+        <span id="vPhoto"></span>
+        <button id="gpsBtn" type="button"></button>
+      </div>
+    </section>
+
+    <section id="photoCard" class="card hidden">
+      <div class="section-title">
+        <h2>4. Fotografía del medidor</h2>
+        <span id="photoStatusBadge" class="badge muted">Sin foto</span>
+      </div>
+
+      <p class="help photo-help">
+        Al tomar o cargar una fotografía, la aplicación capturará automáticamente la ubicación GPS y la asociará a esa imagen.
+      </p>
+
+      <div class="photo-actions">
+        <label class="btn primary file-like">
+          📷 Tomar / cargar fotografía
+          <input id="photoInput" type="file" accept="image/*" capture="environment" hidden />
+        </label>
+        <button id="removePhotoBtn" class="btn danger-outline">🗑️ Eliminar fotografía</button>
+      </div>
+
+      <div id="photoGpsStatus" class="photo-gps-status">
+        <div>
+          <small>Ubicación GPS de la fotografía</small>
+          <strong id="photoGpsValue">Sin ubicación</strong>
+        </div>
+        <div>
+          <small>Fecha y hora de la fotografía</small>
+          <strong id="photoTimeValue">—</strong>
+        </div>
+      </div>
+
+      <div class="photo-dropzone">
+        <span>Vista previa de la fotografía</span>
+        <img id="photoPreview" class="photo-preview hidden" alt="Foto del medidor" />
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>5. Respaldo y exportación</h2>
+      <div class="export-grid">
+        <button id="backupBtn" class="btn secondary">💾 Crear respaldo JSON</button>
+
+        <label class="btn secondary file-like">
+          ♻️ Recuperar respaldo
+          <input id="restoreInput" type="file" accept=".json,application/json" hidden />
+        </label>
+
+        <button id="exportXlsxBtn" class="btn primary">📊 Exportar Excel</button>
+        <button id="exportCsvBtn" class="btn secondary">📄 Exportar CSV</button>
+      </div>
+
+      <p class="help">
+        Los datos se guardan automáticamente en este dispositivo. Al cerrar y volver a abrir la aplicación, la última ruta se recupera sola. Solo cambia cuando usted carga manualmente un archivo nuevo.
+      </p>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span>Realizada por Jesus Remache</span>
+  </footer>
+
+  <div id="toast" class="toast hidden"></div>
+</body>
+</html>
